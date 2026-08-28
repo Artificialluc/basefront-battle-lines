@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Basefront: Battle Lines</title>
+<style>
+*{box-sizing:border-box} body{margin:0;background:#101522;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
+#app{height:100vh;display:flex;flex-direction:column}
+header{height:76px;background:#171e31;border-bottom:2px solid #2d3854;display:flex;align-items:center;justify-content:space-between;padding:0 22px;z-index:5}
+.logo{font-size:24px;font-weight:900;letter-spacing:1px}.logo span{color:#59a9ff}
+.stats{display:flex;gap:18px;align-items:center}.stat{background:#202a42;padding:9px 14px;border-radius:10px;font-weight:800}.money{color:#ffd34d}
+#game{position:relative;flex:1;overflow:hidden;background:
+linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0)),
+repeating-linear-gradient(0deg,transparent 0 59px,rgba(255,255,255,.025) 60px),
+repeating-linear-gradient(90deg,transparent 0 59px,rgba(255,255,255,.025) 60px)}
+.lane{position:absolute;left:5%;right:5%;height:2px;background:#303b57;top:50%;opacity:.65}
+.base{position:absolute;top:50%;transform:translateY(-50%);width:115px;height:185px;border-radius:16px;border:4px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;box-shadow:0 12px 30px #0008}
+.playerBase{left:18px;background:#172d48;border-color:#4da3ff}.enemyBase{right:18px;background:#481c2b;border-color:#ff5474}
+.baseIcon{font-size:60px}.baseName{font-weight:900;margin-top:4px}.bar{width:88%;height:12px;background:#0b0f18;border-radius:8px;overflow:hidden;margin-top:9px}.hp{height:100%;transition:width .15s}
+.playerBase .hp{background:#4da3ff}.enemyBase .hp{background:#ff5474}
+.unit{position:absolute;width:58px;height:66px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;z-index:3;transition:left .08s linear}
+.unit .sprite{width:54px;height:60px;filter:drop-shadow(0 4px 3px #0009)} .unit .sprite svg{width:100%;height:100%} .miniSprite{display:inline-block;width:30px;height:30px;vertical-align:middle}.miniSprite svg{width:100%;height:100%} .unit .uhp{width:44px;height:5px;background:#080b11;border-radius:4px;margin-top:-2px}.unit .uhp i{display:block;height:100%;background:#62e27a;border-radius:4px}
+.projectile{position:absolute;width:9px;height:9px;background:#ffd34d;border-radius:50%;z-index:4;box-shadow:0 0 10px #ffd34d}
+#shop{min-height:118px;background:#171e31;border-top:2px solid #2d3854;display:flex;align-items:center;gap:10px;padding:12px;z-index:5;overflow-x:auto}
+.card{min-width:145px;background:#202a42;border:2px solid #33405f;border-radius:12px;padding:10px;cursor:pointer;user-select:none;transition:.15s}
+.card:hover{transform:translateY(-2px);border-color:#59a9ff;background:#263552}.card.disabled{opacity:.45;cursor:not-allowed;transform:none}
+.card b{display:block;font-size:16px}.card small{display:block;color:#aeb8ce;margin:4px 0}.cost{color:#ffd34d;font-weight:900}
+#restart{margin-left:auto;min-width:110px;padding:13px;border:0;border-radius:10px;background:#59a9ff;color:#07101d;font-weight:900;cursor:pointer}
+#message{position:absolute;left:50%;top:24px;transform:translateX(-50%);background:#171e31eF;border:1px solid #465474;padding:12px 20px;border-radius:12px;font-weight:800;z-index:10;opacity:0;transition:.25s;pointer-events:none}
+#message.show{opacity:1}
+@media(max-width:700px){header{height:64px;padding:0 10px}.logo{font-size:18px}.stats{gap:6px}.stat{padding:7px 9px;font-size:12px}.base{width:82px;height:145px}.baseIcon{font-size:42px}.baseName{font-size:12px}.unit{width:45px}.unit .sprite{width:48px;height:55px}#shop{min-height:110px}.card{min-width:130px}}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="logo">BASE<span>FRONT</span></div>
+  <div class="stats">
+    <div class="stat money">💰 $<span id="money">150</span></div>
+    <div class="stat">⚔️ Wave <span id="wave">1</span></div>
+  </div>
+</header>
+<div id="game">
+  <div class="lane"></div>
+  <div class="base playerBase"><div class="baseIcon">🏰</div><div class="baseName">YOUR BASE</div><div class="bar"><div id="playerHp" class="hp" style="width:100%"></div></div></div>
+  <div class="base enemyBase"><div class="baseIcon">🏯</div><div class="baseName">ENEMY</div><div class="bar"><div id="enemyHp" class="hp" style="width:100%"></div></div></div>
+  <div id="message"></div>
+</div>
+<div id="shop"></div>
+</div>
+<script>
+const game=document.getElementById('game'), shop=document.getElementById('shop');
+let money=150, playerHP=1000, enemyHP=1000, wave=1, running=true, uid=0, units=[], projectiles=[];
+
+
+const SPRITES={
+ soldier:`<svg viewBox="0 0 80 90" aria-label="soldier"><ellipse cx="40" cy="84" rx="24" ry="5" fill="#0005"/><rect x="27" y="43" width="26" height="34" rx="8" fill="#526b45"/><circle cx="40" cy="31" r="14" fill="#d7a477"/><path d="M24 31Q40 10 56 31H24Z" fill="#35452f"/><path d="M29 23Q40 14 51 23" fill="none" stroke="#71875b" stroke-width="5"/><rect x="52" y="45" width="7" height="29" rx="3" fill="#28352a"/><path d="M59 45L66 50L59 55Z" fill="#b8c0c4"/><path d="M30 77L25 87M50 77L55 87" stroke="#263126" stroke-width="7"/></svg>`,
+ archer:`<svg viewBox="0 0 80 90" aria-label="archer"><ellipse cx="40" cy="84" rx="24" ry="5" fill="#0005"/><path d="M29 45Q40 39 51 45L54 76H26Z" fill="#7b5a3a"/><circle cx="40" cy="31" r="13" fill="#d7a477"/><path d="M25 31Q40 12 55 31" fill="#4d3528"/><path d="M60 43Q72 61 60 78" fill="none" stroke="#9b7048" stroke-width="4"/><path d="M40 45L61 61" stroke="#d8c08c" stroke-width="2"/><path d="M31 76L26 87M49 76L54 87" stroke="#403328" stroke-width="7"/></svg>`,
+ knight:`<svg viewBox="0 0 80 90" aria-label="knight"><ellipse cx="40" cy="84" rx="27" ry="5" fill="#0005"/><path d="M25 43L55 43L58 76H22Z" fill="#71808d" stroke="#c5d0d7" stroke-width="2"/><path d="M27 38Q40 19 53 38V57H27Z" fill="#9ba9b2" stroke="#dce3e7" stroke-width="2"/><path d="M31 35H49" stroke="#414b53" stroke-width="5"/><path d="M34 39H38M42 39H46" stroke="#26313a" stroke-width="3"/><path d="M58 46L70 70" stroke="#c9d1d5" stroke-width="4"/><path d="M68 67L73 76" stroke="#8e6b40" stroke-width="5"/><path d="M29 76L24 87M51 76L56 87" stroke="#4e5961" stroke-width="8"/></svg>`,
+ tank:`<svg viewBox="0 0 100 80" aria-label="tank"><ellipse cx="50" cy="73" rx="39" ry="5" fill="#0005"/><rect x="14" y="49" width="72" height="18" rx="7" fill="#3f6544"/><circle cx="28" cy="66" r="8" fill="#1d2921"/><circle cx="48" cy="66" r="8" fill="#1d2921"/><circle cx="68" cy="66" r="8" fill="#1d2921"/><rect x="28" y="35" width="43" height="22" rx="8" fill="#557e52"/><circle cx="51" cy="35" r="13" fill="#668f5c"/><path d="M53 33L88 24L90 30L55 39Z" fill="#435944"/><path d="M23 49H79" stroke="#9bb178" stroke-width="3"/></svg>`
+};
+
+const TYPES={
+ soldier:{name:"Soldier",icon:"soldier",cost:50,hp:100,damage:16,speed:38,range:45,rate:0.8},
+ archer:{name:"Archer",icon:"archer",cost:90,hp:65,damage:12,speed:28,range:180,rate:1.1,ranged:true},
+ knight:{name:"Knight",icon:"knight",cost:170,hp:260,damage:32,speed:20,range:48,rate:1.0},
+ tank:{name:"Tank",icon:"tank",cost:300,hp:520,damage:48,speed:13,range:75,rate:1.3,ranged:true}
+};
+const keys=Object.keys(TYPES);
+keys.forEach(k=>{
+ const t=TYPES[k], c=document.createElement('div'); c.className='card'; c.id='card-'+k;
+ c.innerHTML=`<b><span class="miniSprite">${SPRITES[t.icon]}</span> ${t.name}</b><small>HP ${t.hp} • DMG ${t.damage}</small><div class="cost">💰 $${t.cost}</div>`;
+ c.onclick=()=>spawn('player',k);
+ shop.appendChild(c);
+});
+const restart=document.createElement('button'); restart.id='restart'; restart.textContent='↻ Restart'; shop.appendChild(restart);
+restart.onclick=reset;
+
+function show(text){
+ const m=document.getElementById('message');m.textContent=text;m.classList.add('show');
+ setTimeout(()=>m.classList.remove('show'),1800);
+}
+function updateUI(){
+ document.getElementById('money').textContent=Math.floor(money);
+ document.getElementById('playerHp').style.width=Math.max(0,playerHP/10)+'%';
+ document.getElementById('enemyHp').style.width=Math.max(0,enemyHP/10)+'%';
+ keys.forEach(k=>document.getElementById('card-'+k).classList.toggle('disabled',money<TYPES[k].cost||!running));
+}
+function spawn(team,type){
+ if(!running)return;
+ const t=TYPES[type]; if(team==='player'&&money<t.cost){show("Not enough money!");return}
+ if(team==='player')money-=t.cost;
+ const el=document.createElement('div');el.className='unit';el.innerHTML=`<div class="sprite">${SPRITES[t.icon]}</div><div class="uhp"><i></i></div>`;
+ game.appendChild(el);
+ const x=team==='player'?145:game.clientWidth-145;
+ const y=game.clientHeight/2+(Math.random()*90-45);
+ const u={id:++uid,team,type,x,y,hp:t.hp,max:t.hp,lastAttack:0,el};
+ units.push(u);render(u);updateUI();
+}
+function render(u){
+ u.el.style.left=u.x+'px';u.el.style.top=u.y+'px';
+ u.el.querySelector('i').style.width=Math.max(0,u.hp/u.max*100)+'%';
+}
+function dist(a,b){return Math.abs(a.x-b.x)}
+function kill(u){u.el.remove();units=units.filter(x=>x.id!==u.id)}
+function nearestEnemy(u){
+ let best=null,bd=Infinity;
+ for(const v of units)if(v.team!==u.team&&Math.abs(v.y-u.y)<85){
+   let d=dist(u,v);if(d<bd){bd=d;best=v}
+ }return best;
+}
+function attackUnit(a,b,now){
+ const t=TYPES[a.type]; if(now-a.lastAttack<t.rate*1000)return;
+ a.lastAttack=now;
+ if(t.ranged){
+   const p=document.createElement('div');p.className='projectile';game.appendChild(p);
+   projectiles.push({el:p,x:a.x,y:a.y,target:b,damage:t.damage,life:900});
+ }else b.hp-=t.damage;
+}
+function attackBase(u,now){
+ const t=TYPES[u.type];if(now-u.lastAttack<t.rate*1000)return;
+ u.lastAttack=now;
+ if(u.team==='player')enemyHP-=t.damage;else playerHP-=t.damage;
+ if(Math.random()<.12)show(u.team==='player'?"Hit the enemy base!":"Your base is under attack!");
+}
+function moveUnit(u,dt,now){
+ const t=TYPES[u.type], enemy=nearestEnemy(u);
+ if(enemy && dist(u,enemy)<=t.range){attackUnit(u,enemy,now);return}
+ const targetX=u.team==='player'?game.clientWidth-95:95;
+ const enemyBaseNear=Math.abs(targetX-u.x)<=t.range;
+ if(enemyBaseNear){attackBase(u,now);return}
+ const dir=u.team==='player'?1:-1;
+ u.x+=dir*t.speed*dt;
+ // slight lane movement
+ if(u.x>game.clientWidth+60||u.x<-60)kill(u);else render(u);
+}
+function updateProjectiles(dt){
+ for(let i=projectiles.length-1;i>=0;i--){
+  const p=projectiles[i],t=p.target;
+  if(!t||!units.includes(t)){p.el.remove();projectiles.splice(i,1);continue}
+  const dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy),step=360*dt;
+  if(d<=step){t.hp-=p.damage;p.el.remove();projectiles.splice(i,1)}
+  else {p.x+=dx/d*step;p.y+=dy/d*step;p.el.style.left=p.x+'px';p.el.style.top=p.y+'px'}
+ }
+}
+let last=performance.now(),incomeTimer=0,aiTimer=0;
+function loop(now){
+ if(!running)return;
+ const dt=Math.min(.05,(now-last)/1000);last=now;
+ incomeTimer+=dt;aiTimer+=dt;
+ if(incomeTimer>=1){money+=18;incomeTimer=0;updateUI()}
+ if(aiTimer>=9){aiTimer=0;ai();wave++;document.getElementById("wave").textContent=wave;show("⚔️ Enemy wave "+wave+" incoming!");}
+ for(const u of [...units]){moveUnit(u,dt,now);if(u.hp<=0)kill(u)}
+ updateProjectiles(dt);
+ if(enemyHP<=0){end(true);return} if(playerHP<=0){end(false);return}
+ requestAnimationFrame(loop);
+}
+function ai(){
+ const affordable=keys.filter(k=>TYPES[k].cost<=100+wave*25);
+ const count=1+(Math.random()<.18?1:0);
+ for(let i=0;i<count;i++){
+   const type=affordable[Math.floor(Math.random()*affordable.length)]||'soldier';
+   spawn('enemy',type);
+ }
+}
+function end(win){
+ running=false;updateUI();show(win?"🏆 YOU WIN!":"💀 YOUR BASE FELL!");
+ const m=document.getElementById('message');m.textContent=win?"🏆 VICTORY!":"💀 DEFEAT!";m.classList.add('show');
+}
+function reset(){
+ units.forEach(u=>u.el.remove());projectiles.forEach(p=>p.el.remove());
+ units=[];projectiles=[];money=150;playerHP=1000;enemyHP=1000;wave=1;running=true;
+ document.getElementById('wave').textContent=1;document.getElementById('message').classList.remove('show');
+ updateUI();last=performance.now();requestAnimationFrame(loop);
+}
+window.addEventListener('resize',()=>units.forEach(render));
+updateUI();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
